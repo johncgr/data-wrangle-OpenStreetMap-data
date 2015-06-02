@@ -1,0 +1,170 @@
+####mapparser.py####
+
+def count_tags(filename):
+    tree = ET.iterparse(filename)
+    
+    #note that ET.iterparse does not use the 
+    #root = tree.getroot() structure
+    
+    #output dictionary with format keys are tags present in document and values are
+    #the number of times that tag occurs
+    tags = {}
+    
+    for event, elem in tree:
+        if event == 'end':
+            if elem.tag not in tags.keys():
+                tags[elem.tag] = 1
+            elif elem.tag in tags.keys():
+                tags[elem.tag] += 1
+        elem.clear() #discard the element
+        
+    return tags    
+
+
+
+####tags.py####
+
+def key_type(element, keys):
+    if element.tag == "tag":
+        string = element.attrib.get("k")
+        #print(string)
+        
+        if re.search(lower, string) != None:
+            keys['lower'] += 1
+        if re.search(lower_colon, string) != None:
+            keys['lower_colon'] += 1
+        if re.search(problemchars, string) != None:
+            keys['problemchars'] += 1
+        if ( re.search(lower, string) == None 
+            and re.search(lower_colon, string) == None 
+            and re.search(problemchars, string) == None ):
+            keys['other'] += 1
+                               
+        pass
+    return keys
+
+
+
+####users.py####
+
+def process_map(filename):
+    users = set()
+    for _, element in ET.iterparse(filename):
+        if element.attrib.get('uid') != None:
+            uid = element.attrib.get('uid')
+            users.add(uid)                           
+        pass
+
+    return users
+
+
+####audit.py####
+
+# UPDATE THIS VARIABLE
+mapping = { "St": "Street",
+            "St.": "Street",
+            "Ave": "Avenue",
+            "Rd." : "Road"
+            }
+
+
+def update_name(name, mapping):
+    
+    #calling the street or avenue, etc part of address the suffix
+    suffix = ""
+    suffix_re = re.compile(r'(\w+.?)$') 
+    m = re.search(suffix_re, name)
+    
+    def repl(matchobj):
+        output = mapping[matchobj.group()]
+        return output
+
+    name = re.sub(suffix_re, repl, name)
+    
+    return name
+
+
+####data.py####
+
+def shape_element(element):
+    node = {}
+    #working dictionary made from attributes of current element
+    wd = {}
+    #working dictionary for secondary level tags
+    sd = {}
+    
+    if element.tag == "node" or element.tag == "way":
+        wd = element.attrib
+        
+        try:
+            node['id'] = wd['id']
+        except KeyError:
+            pass
+        
+        try:
+            node['type'] = element.tag
+        except KeyError:
+            pass
+        
+        try:
+            node['visible'] = wd['visible']
+        except KeyError:
+            pass
+        
+        #set values for pos array
+        try:
+            node['pos'] = [float(wd['lat']), float(wd['lon'])]
+        except KeyError:
+            pass
+        
+        #set values for created key
+        try:
+            node['created'] = {}
+            for word in CREATED:
+                node['created'][word] = wd[word]
+        except KeyError:
+            pass
+        
+        #begin evaluation of secondry tags
+        for child in element.iter():
+            
+            #if tag is special case <nd>
+            if child.tag == 'nd':
+                try:
+                    sd = child.attrib
+                    node['node_refs'].append(sd['ref'])
+                except KeyError:
+                    node['node_refs'] = []
+                    node['node_refs'].append(sd['ref'])
+                sd = {}
+                
+            #set values for <tag>   
+            if child.tag == 'tag':
+                #check for problem characters
+                if re.search(problemchars, str(child)) != None:
+                    pass
+                #create secondary working dictionary
+                sd = child.attrib 
+                #check if tag has addr: info and no extra colons
+                if sd['k'].startswith("addr:"):
+                    if sd['k'].count(":") <=1:
+                        try:
+                            node['address'][(sd['k'][5:])] = sd['v']
+                        except KeyError:
+                            node['address'] = {}
+                            node['address'][(sd['k'][5:])] = sd['v']    
+                        
+                #evaluate if tag not addr: and has colon 
+                if sd['k'].startswith("addr:") == False:        
+                    if sd['k'].count(":") == 1:
+                        node[sd['k']] = sd['v']
+        
+        #test print
+        pprint.pprint(node)
+        return node                        
+                                                   
+    else:
+        return None
+
+
+
